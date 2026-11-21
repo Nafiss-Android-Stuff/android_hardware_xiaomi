@@ -6,6 +6,7 @@
 package org.lineageos.remotebuttons.viewmodels
 
 import android.app.Application
+import android.media.AudioManager
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.lineageos.remotebuttons.audio.HdmiVolume
 import org.lineageos.remotebuttons.audio.TestTone
 import org.lineageos.remotebuttons.database.Brand
 import org.lineageos.remotebuttons.ir.CodeSet
@@ -41,6 +43,7 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val repository = SetupRepository(application)
     private val programmers = RemoteProgrammers(application)
     private val tone = TestTone(application)
+    private val audioManager = application.getSystemService(AudioManager::class.java)
 
     private val _pairing = MutableStateFlow<Pairing>(Pairing.Idle)
     val pairing = _pairing.asStateFlow()
@@ -86,6 +89,13 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     /** "Yes": keep the code set currently in the remote. */
     fun confirm() {
         tone.stop()
+        // The remote now sets the TV's volume, so like Xiaomi's setup leave the box at full volume.
+        audioManager.setStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            0,
+        )
+        HdmiVolume.setControlledByTv(getApplication(), true)
         val index = currentIndex() ?: return
         repository.setConfigured("${brand?.name} (${codeSets[index].id.substringAfterLast('/')})")
         _pairing.value = Pairing.Idle
@@ -104,6 +114,7 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
                 remote.programmer.clear(session)
             }
             repository.setConfigured(null)
+            HdmiVolume.setControlledByTv(getApplication(), false)
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
